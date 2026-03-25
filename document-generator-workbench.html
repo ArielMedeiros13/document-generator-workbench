@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <!--
+    Cache-Control via meta é ignorado por servidores modernos, mas sinaliza intenção.
+    Para garantia real, configure o servidor com: Cache-Control: no-cache
+    (Apache: .htaccess / nginx: add_header Cache-Control "no-cache")
+  -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <meta http-equiv="Pragma" content="no-cache"/>
+  <meta http-equiv="Expires" content="0"/>
+  <title>Document Generator Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;0,800;0,900;1,400&family=Nunito+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="document-generator-workbench.css"/>
+  <!--
+    pdf.js é carregado dinamicamente por document-generator-workbench.js com fallback entre CDNs.
+    Não usar <script> estático com integrity= aqui — hash incorreto derruba
+    o script inteiro silenciosamente. O carregamento dinâmico detecta falha
+    e tenta CDN alternativo antes de informar o usuário.
+  -->
+</head>
+<body>
+
+  <header class="app-hd">
+    <div class="app-hd__inner">
+      <div class="app-hd__brand">
+        <span class="app-hd__logo">DOCS</span>
+        <span class="app-hd__sep"></span>
+        <span class="app-hd__sub">Document Generator Workbench</span>
+      </div>
+      <div class="app-hd__actions">
+        <button id="importPdfBtn" class="btn-import">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+            <path d="M6.5 1v8M3.5 6l3 3 3-3M1.5 11h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Importar PDF
+        </button>
+        <input type="file" id="pdfFileInput" accept=".pdf" style="display:none"/>
+        <button id="exampleBtn" class="btn-ghost">Exemplo</button>
+        <button id="printBtn" class="btn-grad">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.5 5V2.5h7V5M3.5 10.5H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1h-1.5M3.5 8.5h7V13h-7V8.5z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Exportar PDF
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══ MODAL DE REVISÃO DE PDF ══════════════════════════════════════ -->
+  <div class="review-overlay" id="reviewOverlay" style="display:none">
+    <div class="review-modal" id="reviewModal">
+      <div class="review-modal__hd">
+        <div class="review-modal__hd-left">
+          <div class="review-modal__icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 3h12v12H3z" stroke="#2ED9C3" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 7h6M6 10h4" stroke="#2ED9C3" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </div>
+          <div>
+            <h2 class="review-modal__title">Conteúdo extraído do PDF</h2>
+            <p class="review-modal__sub" id="reviewSubtitle">Revise o mapeamento antes de aplicar ao template</p>
+          </div>
+        </div>
+        <button class="review-modal__close" id="reviewClose" title="Fechar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <!-- Aviso de limitação -->
+      <div class="review-warning" id="reviewWarning" style="display:none">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1L13 13H1L7 1z" stroke="#E5B92B" stroke-width="1.3" stroke-linejoin="round"/><path d="M7 6v3M7 10.5v.5" stroke="#E5B92B" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <span id="reviewWarningText"></span>
+      </div>
+
+      <div class="review-modal__body">
+
+        <!-- Coluna esquerda: campos editáveis -->
+        <div class="review-fields">
+          <h3 class="review-section-title">Identificação</h3>
+          <div class="review-field">
+            <label class="review-label">Tipo de Documento</label>
+            <select id="rv_docType" class="review-select">
+              <option value="relatorio">Relatório Executivo</option>
+              <option value="parecer">Parecer Institucional</option>
+              <option value="diagnostico">Diagnóstico</option>
+              <option value="proposta">Proposta</option>
+              <option value="sintese">Síntese Estratégica</option>
+              <option value="impacto">Relatório de Impacto</option>
+              <option value="crm">Relatório de CRM</option>
+            </select>
+          </div>
+          <div class="review-field">
+            <label class="review-label">Modo de Estruturação</label>
+            <select id="rv_structureMode" class="review-select">
+              <option value="editorial">Preservação Editorial</option>
+              <option value="visual">Estruturação Visual</option>
+              <option value="auto">Automático Prudente</option>
+            </select>
+          </div>
+          <p class="review-helper-text">Em preservação editorial, o gerador prioriza a ordem, os headings e os blocos corridos do original. Componentes visuais especiais só entram quando houver forte evidência ou quando você marcar explicitamente um bloco para isso.</p>
+          <div class="review-field">
+            <label class="review-label">Título</label>
+            <input id="rv_title" type="text" class="review-input" placeholder="Título detectado..."/>
+          </div>
+          <div class="review-field">
+            <label class="review-label">Subtítulo</label>
+            <input id="rv_subtitle" type="text" class="review-input" placeholder="Subtítulo detectado..."/>
+          </div>
+          <div class="review-field-row">
+            <div class="review-field">
+              <label class="review-label">Data</label>
+              <input id="rv_date" type="text" class="review-input" placeholder="Data..."/>
+            </div>
+            <div class="review-field">
+              <label class="review-label">Versão</label>
+              <input id="rv_version" type="text" class="review-input" placeholder="v1.0"/>
+            </div>
+          </div>
+          <div class="review-field">
+            <label class="review-label">Autoria</label>
+            <input id="rv_author" type="text" class="review-input" placeholder="Autoria detectada..."/>
+          </div>
+          <div class="review-field">
+            <label class="review-label">Área / Departamento</label>
+            <input id="rv_dept" type="text" class="review-input" placeholder="Área detectada..."/>
+          </div>
+
+          <h3 class="review-section-title" style="margin-top:16px">Resumo Executivo</h3>
+          <div class="review-field">
+            <textarea id="rv_summary" class="review-textarea" rows="4" placeholder="Resumo detectado ou extraído dos primeiros parágrafos..."></textarea>
+          </div>
+
+          <h3 class="review-section-title" style="margin-top:16px">Próximos Passos</h3>
+          <div class="review-field">
+            <textarea id="rv_nextSteps" class="review-textarea" rows="3" placeholder="Ações detectadas, uma por linha..."></textarea>
+          </div>
+        </div>
+
+        <!-- Coluna direita: blocos detectados -->
+        <div class="review-sections-col">
+          <div class="review-sections-hd">
+            <h3 class="review-section-title">Blocos Detectados</h3>
+            <button class="review-add-sec" id="reviewAddSec">+ Adicionar Bloco</button>
+          </div>
+          <p class="review-helper-text">Revise cada bloco antes de aplicar. Na dúvida, mantenha como texto genérico ou ignore.</p>
+          <div id="reviewSectionsList" class="review-sections-list"></div>
+
+          <h3 class="review-section-title" style="margin-top:16px">Texto Bruto Extraído</h3>
+          <div class="review-raw-wrap">
+            <textarea id="rv_raw" class="review-textarea review-textarea--raw" rows="10" readonly placeholder="Texto extraído do PDF..."></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="review-modal__foot">
+        <div class="review-modal__foot-info" id="reviewPageInfo"></div>
+        <button class="btn-ghost" id="reviewCancel">Cancelar</button>
+        <button class="btn-generate review-apply-btn" id="reviewApply">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7l3.5 3.5L11 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Aplicar ao Template
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ OVERLAY DE LOADING ═══════════════════════════════════════════ -->
+  <div class="loading-overlay" id="loadingOverlay" style="display:none">
+    <div class="loading-box">
+      <div class="loading-spinner"></div>
+      <p class="loading-label" id="loadingLabel">Extraindo texto do PDF…</p>
+    </div>
+  </div>
+
+  <!-- ══ DROP ZONE GLOBAL ══════════════════════════════════════════════ -->
+  <div class="drop-zone-global" id="dropZoneGlobal" style="display:none">
+    <div class="drop-zone-global__inner">
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><path d="M18 4v20M9 15l9 9 9-9" stroke="#2ED9C3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 28h28" stroke="#2ED9C3" stroke-width="2" stroke-linecap="round"/></svg>
+      <p>Solte o PDF aqui para importar</p>
+    </div>
+  </div>
+
+  <div class="workspace">
+
+    <aside class="ctrl-panel" id="ctrlPanel">
+      <div class="ctrl-panel__body">
+
+        <!-- Importar PDF — entrada no painel -->
+        <section class="ctrl-sec ctrl-sec--import">
+          <div class="import-zone" id="importZone">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="3" y="2" width="11" height="14" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M14 2l3 3v11H8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M10 9v5M7.5 11.5L10 14l2.5-2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="import-zone__text">Arraste um PDF ou <strong>clique para importar</strong></span>
+          </div>
+        </section>
+
+        <section class="ctrl-sec">
+          <h3 class="ctrl-sec__title">Tipo de Documento</h3>
+          <div class="doc-types" id="docTypes">
+            <button class="doc-type active" data-type="relatorio">Relatório Executivo</button>
+            <button class="doc-type" data-type="parecer">Parecer Institucional</button>
+            <button class="doc-type" data-type="diagnostico">Diagnóstico</button>
+            <button class="doc-type" data-type="proposta">Proposta</button>
+            <button class="doc-type" data-type="sintese">Síntese Estratégica</button>
+            <button class="doc-type" data-type="impacto">Relatório de Impacto</button>
+            <button class="doc-type" data-type="crm">Relatório de CRM</button>
+          </div>
+        </section>
+
+        <section class="ctrl-sec">
+          <h3 class="ctrl-sec__title">Modo Visual</h3>
+          <div class="theme-grid" id="themeOpts">
+
+            <button class="theme-card active" data-theme="grafite">
+              <span class="tc-preview tc-preview--grafite">
+                <span class="tc-hd"></span>
+                <span class="tc-sidebar"></span>
+                <span class="tc-body"><span></span><span></span><span></span></span>
+              </span>
+              <span class="tc-name">Grafite</span>
+              <span class="tc-hint">Escuro · Premium</span>
+            </button>
+
+            <button class="theme-card" data-theme="editorial">
+              <span class="tc-preview tc-preview--editorial">
+                <span class="tc-hd"></span>
+                <span class="tc-sidebar"></span>
+                <span class="tc-body"><span></span><span></span><span></span></span>
+              </span>
+              <span class="tc-name">Editorial</span>
+              <span class="tc-hint">Branco · Refinado</span>
+            </button>
+
+            <button class="theme-card" data-theme="navy">
+              <span class="tc-preview tc-preview--navy">
+                <span class="tc-hd"></span>
+                <span class="tc-sidebar"></span>
+                <span class="tc-body"><span></span><span></span><span></span></span>
+              </span>
+              <span class="tc-name">Navy</span>
+              <span class="tc-hint">Azul · Institucional</span>
+            </button>
+
+            <button class="theme-card theme-card--special" data-theme="pdf">
+              <span class="tc-preview tc-preview--pdf">
+                <span class="tc-hd"></span>
+                <span class="tc-body tc-body--pdf">
+                  <span class="tc-big"></span>
+                  <span></span><span></span>
+                </span>
+              </span>
+              <span class="tc-name">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true"><path d="M4 .5L7.5 4 4 7.5.5 4 4 .5z" fill="#E16E1A"/></svg>
+                Modo PDF
+              </span>
+              <span class="tc-hint">Presentation Mode</span>
+            </button>
+
+          </div>
+          <p class="theme-desc" id="themeDesc">
+            <strong>Grafite</strong> — fundo grafite escuro, contraste máximo, lateral colorida. Para relatórios executivos e materiais de impacto interno.
+          </p>
+        </section>
+
+        <section class="ctrl-sec">
+          <h3 class="ctrl-sec__title">Identificação</h3>
+          <div class="fields">
+            <label class="fld">
+              <span class="fld__lbl">Título do Documento</span>
+              <input id="fldTitle" type="text" placeholder="Relatório de Desempenho Q1 2025" autocomplete="off"/>
+            </label>
+            <label class="fld">
+              <span class="fld__lbl">Subtítulo</span>
+              <input id="fldSubtitle" type="text" placeholder="Análise de crescimento e engajamento" autocomplete="off"/>
+            </label>
+            <div class="fld-row">
+              <label class="fld">
+                <span class="fld__lbl">Data</span>
+                <input id="fldDate" type="text" placeholder="Março 2025" autocomplete="off"/>
+              </label>
+              <label class="fld">
+                <span class="fld__lbl">Versão</span>
+                <input id="fldVersion" type="text" placeholder="v1.0" autocomplete="off"/>
+              </label>
+            </div>
+            <label class="fld">
+              <span class="fld__lbl">Autoria / Responsável</span>
+              <input id="fldAuthor" type="text" placeholder="Strategy Team" autocomplete="off"/>
+            </label>
+            <label class="fld">
+              <span class="fld__lbl">Área / Departamento</span>
+              <input id="fldDept" type="text" placeholder="Produto & Crescimento" autocomplete="off"/>
+            </label>
+          </div>
+        </section>
+
+        <section class="ctrl-sec">
+          <h3 class="ctrl-sec__title">Resumo Executivo</h3>
+          <div class="fields">
+            <label class="fld">
+              <textarea id="fldSummary" rows="4" placeholder="Síntese dos principais achados, resultados ou recomendações..."></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="ctrl-sec">
+          <h3 class="ctrl-sec__title">Destaques &amp; Indicadores</h3>
+          <div id="highlightsList" class="sections-list"></div>
+          <button id="addHighlightBtn" class="btn-add-sec">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 1v9M1 5.5h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            Adicionar Indicador
+          </button>
+        </section>
+
+        <section class="ctrl-sec">
+          <h3 class="ctrl-sec__title">Seções do Documento</h3>
+          <div id="sectionsList" class="sections-list"></div>
+          <button id="addSectionBtn" class="btn-add-sec">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 1v9M1 5.5h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            Adicionar Seção
+          </button>
+        </section>
+
+        <section class="ctrl-sec">
+          <h3 class="ctrl-sec__title">Próximos Passos</h3>
+          <div class="fields">
+            <label class="fld">
+              <textarea id="fldNextSteps" rows="4" placeholder="Liste as ações recomendadas, uma por linha..."></textarea>
+            </label>
+          </div>
+        </section>
+
+        <div class="ctrl-panel__foot">
+          <button id="generateBtn" class="btn-generate">Gerar Documento</button>
+        </div>
+
+      </div>
+    </aside>
+
+    <main class="doc-stage" id="docStage">
+      <div class="doc-stage__hint" id="stageHint">
+        <div class="stage-hint-inner">
+          <div class="stage-hint-star">✦</div>
+          <p>Preencha os campos e clique em <strong>Gerar Documento</strong></p>
+          <p class="stage-hint-sub">ou importe um PDF para extrair conteúdo automaticamente</p>
+          <div style="display:flex;gap:10px;margin-top:18px;justify-content:center;flex-wrap:wrap">
+            <button class="btn-import" onclick="document.getElementById('importPdfBtn').click()">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v8M3.5 6l3 3 3-3M1.5 11h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Importar PDF
+            </button>
+            <button class="btn-grad" onclick="document.getElementById('exampleBtn').click()">Ver Exemplo</button>
+          </div>
+        </div>
+      </div>
+      <div class="doc-wrap" id="docWrap" style="display:none"></div>
+    </main>
+
+  </div>
+
+  <!--
+    Cache busting: altere o número de versão junto com qualquer deploy do JS.
+    Se window.DOC_WORKBENCH_VERSION no console não bater com este valor,
+    o browser está servindo JS cacheado — force Ctrl+Shift+R.
+  -->
+  <script src="document-generator-workbench.js"></script>
+</body>
+</html>
